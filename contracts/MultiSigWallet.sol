@@ -7,7 +7,7 @@ contract MultiSigWallet {
   uint256 private Id;
 
   mapping (address => bool) public _isOwner;
-  mapping (uint256 => bool) public _approved;
+  mapping (address => mapping(uint256 => bool)) public _approved;
   mapping (uint256 => bool) public _executed;
   mapping (uint256 => bool) private _transactions;
 
@@ -17,12 +17,12 @@ contract MultiSigWallet {
   }
 
   modifier notApproved(uint256 index) {
-    require(_approved[index] == false, "Tx already approved");
+    require(_approved[msg.sender][index] == false, "Tx already approved by user");
     _;
   }
 
   modifier txExist(uint256 index) {
-    require(_transactions[index] == true );
+    require(_transactions[index] == true, "Tx does not exist");
     _;
   }
 
@@ -82,7 +82,7 @@ contract MultiSigWallet {
   txExist(_index)
   notApproved(_index) {
     transactions[_index].approval++;
-    _approved[_index] = true;
+    _approved[msg.sender][_index] = true;
     emit Approval(_index, msg.sender);
   }
 
@@ -91,7 +91,7 @@ contract MultiSigWallet {
   txExist(_index)
   notExecuted(_index) {
     transactions[_index].approval--;
-    _approved[_index] = false;
+    _approved[msg.sender][_index] = false;
     emit Revoke(_index, msg.sender);
   }
 
@@ -99,18 +99,16 @@ contract MultiSigWallet {
   public
   txExist(_index)
   notExecuted(_index) {
-    if(getApprovalCount(_index)){
-      _withdraw(_index);
-      _executed[_index] = true;
-
-    }
-
+    require(getApprovalCount(_index), "Approval not up to required");
+    _withdraw(_index);
+    _executed[_index] = true;
   }
 
   function _withdraw(uint256 _index)
   internal {
     uint256 amount = transactions[_index].amount;
     address to = transactions[_index].to;
+    require(amount <= address(this).balance, "invalid amount");
     (bool success, ) = to.call{value: amount}(" ");
     require(success, "Withdrawal unsuccessful");
     emit Withdrawal(to, amount);
@@ -135,7 +133,7 @@ contract MultiSigWallet {
     }
   }
 
-  function getApprovalCount(uint256 _index) internal returns (bool) {
+  function getApprovalCount(uint256 _index) internal view returns (bool) {
     require(transactions[_index].approval >= required);
     return true;
   }
